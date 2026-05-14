@@ -1,0 +1,16 @@
+{
+  "name": "坐标计算 - 专业RTK工具",
+  "short_name": "坐标计算",
+  "description": "专业RTK坐标计算工具，支持道路设计、放样计算、坐标转换",
+  "start_url": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#0B1629",
+  "theme_color": "#0B1629",
+  "lang": "zh-CN",
+  "icons": [
+    { "src": "assets/icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
+    { "src": "assets/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ],
+  "categories": ["utilities", "productivity"]
+}
