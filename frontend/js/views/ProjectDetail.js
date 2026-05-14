@@ -46,7 +46,7 @@ window.ProjectDetailView = {
         <LineLibModule    v-if="activeId==='lines'"    :project="project" />
         <PolyLibModule    v-if="activeId==='polys'"    :project="project" />
         <RoadLibModule    v-if="activeId==='roads'"    :project="project" />
-        <MapPreviewModule  v-if="activeId==='map'"     :project="project" />
+
         <StakeoutLibModule v-if="activeId==='stakeout'" :project="project" />
       </main>
     </div>
@@ -59,8 +59,7 @@ window.ProjectDetailView = {
     LineLibModule:   window.LineLibModule,
     PolyLibModule:   window.PolyLibModule,
     RoadLibModule:    window.RoadLibModule,
-    StakeoutLibModule: window.StakeoutLibModule,
-    MapPreviewModule: window.MapPreviewModule
+    StakeoutLibModule: window.StakeoutLibModule
   },
   data() {
     return {
@@ -73,8 +72,7 @@ window.ProjectDetailView = {
         { id: 'roads',    icon: '🛣️',  label: '道路设计' },
         { id: 'calc',     icon: '🔢', label: '坐标计算' },
         { id: 'conv',     icon: '🔄', label: '坐标换算' },
-        { id: 'stakeout', icon: '🎯', label: '放样' },
-        { id: 'map',      icon: '🗺️',  label: '平面预览' }
+        { id: 'stakeout', icon: '🎯', label: '放样' }
       ]
     };
   },

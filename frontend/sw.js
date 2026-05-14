@@ -1,4 +1,4 @@
-const CACHE_NAME = 'coord-pwa-v49';
+const CACHE_NAME = 'coord-pwa-v50';
 const STATIC_ASSETS = [
   '/',
   '/index.html',
@@ -20,7 +20,6 @@ const STATIC_ASSETS = [
   '/js/views/modules/PolyLib.js',
   '/js/views/modules/RoadLib.js',
   '/js/views/modules/StakeoutLib.js',
-  '/js/views/modules/MapPreview.js',
   '/js/app.js',
   'https://cdn.jsdelivr.net/npm/vue@3.3.13/dist/vue.global.prod.js',
   'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.39.3/dist/umd/supabase.js'

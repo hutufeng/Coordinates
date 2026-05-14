@@ -683,16 +683,19 @@ window.StakeoutLibModule = {
       const road = this.roads.find(r => r.id === this.selRoad);
       if (!road) return;
       const { startK, endK, interval, center, leftEdge, rightEdge, offsets } = this.rOpt;
-      if (startK===''||endK==='') return window.AppStore.toast('请输入起止桩号','error');
+      if (startK == null || startK === '' || endK == null || endK === '') return window.AppStore.toast('请输入起止桩号','error');
+      const intv = parseFloat(interval);
+      if (isNaN(intv) || intv <= 0) return window.AppStore.toast('桩距必须大于0', 'error');
+
       this.computing = true; this.roadResult = [];
       await new Promise(r=>setTimeout(r,30));
       try {
         // 调用 RoadMath 计算逐桩
-        const stakeRows = window.RoadMath.computeStakeTable(road, { startK, endK, interval });
+        const stakeRows = window.RoadMath.computeStakeTable(road, { startK, endK, interval: intv });
         if (stakeRows && stakeRows.error) throw new Error(stakeRows.error);
 
         // 解析自定义偏移值
-        const customOffsets = offsets.split(',').map(s=>parseFloat(s.trim())).filter(v=>!isNaN(v));
+        const customOffsets = (offsets || '').toString().split(',').map(s=>parseFloat(s.trim())).filter(v=>!isNaN(v));
 
         const result = [];
         for (const row of (stakeRows||[])) {
