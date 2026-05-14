@@ -8,6 +8,7 @@ window.StakeoutLibModule = {
         <span v-if="coordOffset" style="font-size:12px;padding:3px 10px;background:var(--success-subtle,rgba(16,185,129,.12));color:var(--success);border-radius:20px;">
           ✅ 已应用{{ coordOffset.type==='simple'?'平移':'\u56db参数' }}坐标系
         </span>
+        <button class="btn btn-ghost btn-sm" @click="openPreview">👁️ 预览当前</button>
         <button v-for="t in tabs" :key="t.id" class="btn btn-sm"
           :class="activeTab===t.id?'btn-primary':'btn-ghost'"
           @click="switchTab(t.id)">{{ t.label }}</button>
@@ -341,6 +342,26 @@ window.StakeoutLibModule = {
         </div>
       </div>
     </div>
+
+    <!-- 预览弹窗 -->
+    <div v-if="showPreview" class="modal-overlay" @click.self="closePreview" style="z-index:999;">
+      <div class="modal" style="width:95vw;max-width:1200px;height:85vh;display:flex;flex-direction:column;padding:16px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+          <h3 style="margin:0;font-size:16px;">👁️ 放样预览 <span style="font-size:12px;color:var(--text-muted);font-weight:normal;">(滚轮缩放，拖拽平移，蓝绿紫为基准线，红点为放样点)</span></h3>
+          <div style="display:flex;gap:8px;">
+            <button class="btn btn-ghost btn-sm" @click="resetPreview">⊙ 适应视图</button>
+            <button class="btn btn-icon" @click="closePreview">✖</button>
+          </div>
+        </div>
+        <div style="flex:1;background:var(--bg-surface);border:1px solid var(--border);border-radius:var(--r-md);position:relative;overflow:hidden;">
+          <canvas ref="previewCanvas" 
+            style="width:100%;height:100%;display:block;cursor:crosshair;touch-action:none;"
+            @mousedown="pDown" @mousemove="pMove" @mouseup="pUp" @wheel.prevent="pWheel"
+            @touchstart.prevent="pTouchStart" @touchmove.prevent="pTouchMove" @touchend="pTouchEnd">
+          </canvas>
+        </div>
+      </div>
+    </div>
   </div>
   `,
   props: ['project'],
@@ -354,6 +375,8 @@ window.StakeoutLibModule = {
         { id: 'roads',  label: '🛣️ 道路' }
       ],
       loading: false, computing: false,
+      showPreview: false, cvsW: 800, cvsH: 600,
+      pv: { tx: 0, ty: 0, scale: 1, isDrag: false, lastX: 0, lastY: 0, lastDist: 0 },
       // 点库
       points: [], ptSearch: '', ptSelected: [], ptFmt: 'code_x_y_h',
       // 线库
@@ -410,18 +433,24 @@ window.StakeoutLibModule = {
       try {
         const pid = this.project.id;
         if (this.activeTab === 'points') {
-          const { data } = await sb.from('points').select('*').eq('project_id', pid).order('code');
+          const { data, error } = await sb.from('points').select('*').eq('project_id', pid).order('code');
+          if (error) throw error;
           this.points = data || [];
         } else if (this.activeTab === 'lines') {
-          const { data } = await sb.from('lines').select('*').eq('project_id', pid);
+          const { data, error } = await sb.from('lines').select('*').eq('project_id', pid);
+          if (error) throw error;
           this.lines = data || [];
         } else if (this.activeTab === 'polys') {
-          const { data } = await sb.from('polys').select('*').eq('project_id', pid);
+          const { data, error } = await sb.from('polys').select('*').eq('project_id', pid);
+          if (error) throw error;
           this.polys = data || [];
         } else if (this.activeTab === 'roads') {
-          const { data } = await sb.from('roads').select('*').eq('project_id', pid);
+          const { data, error } = await sb.from('roads').select('*').eq('project_id', pid);
+          if (error) throw error;
           this.roads = data || [];
         }
+      } catch (err) {
+        window.AppStore.toast('数据加载失败: ' + err.message, 'error');
       } finally { this.loading = false; }
     },
 
@@ -723,6 +752,227 @@ window.StakeoutLibModule = {
       a.href = URL.createObjectURL(blob);
       a.download = filename;
       a.click();
-    }
+    },
+
+    // ---- 预览逻辑 ----
+    openPreview() {
+      this.showPreview = true;
+      this.$nextTick(() => {
+        this.resizeCanvas();
+        this.resetPreview();
+      });
+      window.addEventListener('resize', this.resizeCanvas);
+    },
+    closePreview() {
+      this.showPreview = false;
+      window.removeEventListener('resize', this.resizeCanvas);
+    },
+    resizeCanvas() {
+      const cvs = this.$refs.previewCanvas;
+      if (cvs && cvs.parentElement) {
+        this.cvsW = cvs.parentElement.clientWidth;
+        this.cvsH = cvs.parentElement.clientHeight;
+        cvs.width = this.cvsW;
+        cvs.height = this.cvsH;
+        this.drawPreview();
+      }
+    },
+    resetPreview() {
+      const pts = [];
+      const addPts = (arr) => arr.forEach(p => { if(p.x!=null&&p.y!=null) pts.push({ x: parseFloat(p.x), y: parseFloat(p.y) }); });
+      
+      if (this.activeTab === 'points') {
+        const pArr = this.filteredPts;
+        const step = Math.max(1, Math.ceil(pArr.length / 5000));
+        for(let i=0; i<pArr.length; i+=step) {
+           const o = this.applyOffset(parseFloat(pArr[i].x), parseFloat(pArr[i].y));
+           pts.push(o);
+        }
+      } else if (this.activeTab === 'lines' && this.selLine) {
+        const line = this.lines.find(l => l.id === this.selLine);
+        if (line && line.points) line.points.forEach(p => pts.push(this.applyOffset(parseFloat(p.x), parseFloat(p.y))));
+        addPts(this.lineResult);
+      } else if (this.activeTab === 'polys' && this.selPoly) {
+        const poly = this.polys.find(p => p.id === this.selPoly);
+        if (poly && poly.points) poly.points.forEach(p => pts.push(this.applyOffset(parseFloat(p.x), parseFloat(p.y))));
+        const resPts = this.polyMode === 'pts' ? this.polyResult : (this.isScatter ? this.gridResult : this.pgridResult);
+        addPts(resPts);
+      } else if (this.activeTab === 'roads' && this.selRoad) {
+        const road = this.roads.find(r => r.id === this.selRoad);
+        if (road && road.jds) road.jds.forEach(p => pts.push(this.applyOffset(parseFloat(p.x), parseFloat(p.y))));
+        this.roadResult.forEach(row => {
+          row.cols.forEach(c => {
+            if (c.label.endsWith('X')) {
+              const yCol = row.cols.find(cy => cy.label === c.label.replace('X','Y'));
+              if (yCol && c.val != null && yCol.val != null) pts.push({x: parseFloat(c.val), y: parseFloat(yCol.val)});
+            }
+          });
+        });
+      }
+
+      if (!pts.length) {
+        this.pv.tx = this.cvsW / 2; this.pv.ty = this.cvsH / 2; this.pv.scale = 1;
+        this.drawPreview();
+        return;
+      }
+
+      let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+      pts.forEach(p => {
+        if(p.x < minX) minX = p.x; if(p.x > maxX) maxX = p.x;
+        if(p.y < minY) minY = p.y; if(p.y > maxY) maxY = p.y;
+      });
+
+      const dx = maxX - minX, dy = maxY - minY;
+      const pad = 40;
+      const scaleX = (this.cvsH - pad * 2) / (dx || 10);
+      const scaleY = (this.cvsW - pad * 2) / (dy || 10);
+      this.pv.scale = Math.min(scaleX, scaleY);
+      this.pv.tx = this.cvsW / 2 - ((minY + maxY) / 2) * this.pv.scale;
+      this.pv.ty = this.cvsH / 2 + ((minX + maxX) / 2) * this.pv.scale;
+      this.drawPreview();
+    },
+    toCanvas(px, py) {
+      return { cx: this.pv.tx + py * this.pv.scale, cy: this.pv.ty - px * this.pv.scale };
+    },
+    drawPreview() {
+      const cvs = this.$refs.previewCanvas;
+      if (!cvs) return;
+      const ctx = cvs.getContext('2d');
+      ctx.clearRect(0, 0, this.cvsW, this.cvsH);
+
+      const drawPts = (arr, color, radius, isStroke = false) => {
+        if (!arr || !arr.length) return;
+        ctx.fillStyle = color; ctx.strokeStyle = color;
+        ctx.beginPath();
+        arr.forEach(p => {
+          if (p.x == null || p.y == null || isNaN(p.x)) return;
+          const { cx, cy } = this.toCanvas(p.x, p.y);
+          ctx.moveTo(cx + radius, cy);
+          ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+        });
+        if (isStroke) ctx.stroke(); else ctx.fill();
+      };
+      const drawLine = (arr, color, width, isPoly = false) => {
+        if (!arr || arr.length < 2) return;
+        ctx.beginPath(); ctx.strokeStyle = color; ctx.lineWidth = width;
+        let moved = false;
+        arr.forEach(p => {
+          if (p.x == null || p.y == null || isNaN(p.x)) return;
+          const { cx, cy } = this.toCanvas(p.x, p.y);
+          if (!moved) { ctx.moveTo(cx, cy); moved = true; }
+          else { ctx.lineTo(cx, cy); }
+        });
+        if (isPoly && moved) ctx.closePath();
+        ctx.stroke();
+      };
+
+      if (this.activeTab === 'points') {
+        const pArr = this.filteredPts;
+        const step = Math.max(1, Math.ceil(pArr.length / 5000));
+        const pts = [];
+        for(let i=0; i<pArr.length; i+=step) pts.push(this.applyOffset(parseFloat(pArr[i].x), parseFloat(pArr[i].y)));
+        drawPts(pts, 'rgba(96, 165, 250, 0.6)', 3);
+        const selPts = this.points.filter(p => this.ptSelected.includes(p.id)).map(p=>this.applyOffset(parseFloat(p.x),parseFloat(p.y)));
+        drawPts(selPts, '#ef4444', 4);
+      } 
+      else if (this.activeTab === 'lines' && this.selLine) {
+        const line = this.lines.find(l => l.id === this.selLine);
+        if (line && line.points) {
+          const offPts = line.points.map(p=>this.applyOffset(parseFloat(p.x),parseFloat(p.y)));
+          drawLine(offPts, '#34d399', 2);
+          drawPts(offPts, '#10b981', 3);
+        }
+        drawPts(this.lineResult, '#ef4444', 4);
+      }
+      else if (this.activeTab === 'polys' && this.selPoly) {
+        const poly = this.polys.find(p => p.id === this.selPoly);
+        if (poly && poly.points) {
+          const offPts = poly.points.map(p=>this.applyOffset(parseFloat(p.x),parseFloat(p.y)));
+          if (poly.scatter_type === 'scatter') drawPts(offPts, '#a78bfa', 2);
+          else { drawLine(offPts, '#8b5cf6', 2, true); drawPts(offPts, '#a78bfa', 3); }
+        }
+        const resPts = this.polyMode === 'pts' ? this.polyResult : (this.isScatter ? this.gridResult : this.pgridResult);
+        const stPts = [];
+        resPts.forEach(p => { if(p.x!=null&&p.y!=null) stPts.push({x:parseFloat(p.x), y:parseFloat(p.y)}); });
+        drawPts(stPts, '#ef4444', 4);
+      }
+      else if (this.activeTab === 'roads' && this.selRoad) {
+        const road = this.roads.find(r => r.id === this.selRoad);
+        if (road && road.jds && road.jds.length) {
+           drawLine(road.jds.map(p=>this.applyOffset(parseFloat(p.x),parseFloat(p.y))), 'rgba(251, 146, 60, 0.4)', 1);
+        }
+        if (road && road.alignment && window.RoadMath) {
+           const centerPts = [];
+           const L = road.alignment[road.alignment.length-1].endK;
+           for(let k=0; k<=L; k+=20) {
+             const pt = window.RoadMath.getPointByChainage(road.alignment, k);
+             if(pt) centerPts.push(this.applyOffset(pt.x, pt.y));
+           }
+           drawLine(centerPts, '#f97316', 2);
+        }
+        const stakePts = [];
+        this.roadResult.forEach(row => {
+          row.cols.forEach(c => {
+            if (c.label.endsWith('X')) {
+              const yCol = row.cols.find(cy => cy.label === c.label.replace('X','Y'));
+              if (yCol && c.val != null && yCol.val != null) stakePts.push({x: parseFloat(c.val), y: parseFloat(yCol.val)});
+            }
+          });
+        });
+        drawPts(stakePts, '#ef4444', 4);
+      }
+    },
+    pDown(e) { this.pv.isDrag = true; this.pv.lastX = e.clientX; this.pv.lastY = e.clientY; },
+    pMove(e) {
+      if (!this.pv.isDrag) return;
+      this.pv.tx += e.clientX - this.pv.lastX;
+      this.pv.ty += e.clientY - this.pv.lastY;
+      this.pv.lastX = e.clientX; this.pv.lastY = e.clientY;
+      requestAnimationFrame(this.drawPreview);
+    },
+    pUp() { this.pv.isDrag = false; },
+    pWheel(e) {
+      const zoom = e.deltaY > 0 ? 0.9 : 1.1;
+      const cvs = this.$refs.previewCanvas;
+      const rect = cvs.getBoundingClientRect();
+      const mx = e.clientX - rect.left;
+      const my = e.clientY - rect.top;
+      this.pv.tx = mx - (mx - this.pv.tx) * zoom;
+      this.pv.ty = my - (my - this.pv.ty) * zoom;
+      this.pv.scale *= zoom;
+      requestAnimationFrame(this.drawPreview);
+    },
+    pTouchStart(e) {
+      if (e.touches.length === 1) {
+        this.pv.isDrag = true;
+        this.pv.lastX = e.touches[0].clientX;
+        this.pv.lastY = e.touches[0].clientY;
+      } else if (e.touches.length === 2) {
+        this.pv.isDrag = false;
+        this.pv.lastDist = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
+      }
+    },
+    pTouchMove(e) {
+      if (e.touches.length === 1 && this.pv.isDrag) {
+        this.pv.tx += e.touches[0].clientX - this.pv.lastX;
+        this.pv.ty += e.touches[0].clientY - this.pv.lastY;
+        this.pv.lastX = e.touches[0].clientX;
+        this.pv.lastY = e.touches[0].clientY;
+        requestAnimationFrame(this.drawPreview);
+      } else if (e.touches.length === 2) {
+        const dist = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
+        const zoom = dist / this.pv.lastDist;
+        this.pv.lastDist = dist;
+        const cvs = this.$refs.previewCanvas;
+        const rect = cvs.getBoundingClientRect();
+        const mx = (e.touches[0].clientX + e.touches[1].clientX) / 2 - rect.left;
+        const my = (e.touches[0].clientY + e.touches[1].clientY) / 2 - rect.top;
+        this.pv.tx = mx - (mx - this.pv.tx) * zoom;
+        this.pv.ty = my - (my - this.pv.ty) * zoom;
+        this.pv.scale *= zoom;
+        requestAnimationFrame(this.drawPreview);
+      }
+    },
+    pTouchEnd(e) { this.pv.isDrag = false; }
   }
 };
