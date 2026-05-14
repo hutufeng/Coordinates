@@ -33,16 +33,18 @@
 
 2. **登录 [Cloudflare Dashboard](https://dash.cloudflare.com/) → Workers & Pages → Create**
    - 连接 GitHub 仓库：`<your-username>/<your-repo>`
-   - 配置：
-     - **构建命令**：留空（纯静态站点）
-     - **构建输出目录**：`frontend`
+   - 配置构建设置：
+     - **构建命令（Build command）**：`bash build.sh`
+     - **构建输出目录（Build output directory）**：`frontend`
      - **Root directory**：`/`（默认）
-   - 点击 **Save and Deploy**
+   - **此时先不要点击 Deploy，点击 "Save and Deploy" 后由于没有环境变量，暂不生效**
 
-3. **配置 Supabase 密钥**
-   部署后需要修改 `frontend/js/config.js` 中的 Supabase 配置：
-   - 直接在 GitHub 仓库中编辑 `frontend/js/config.js`
-   - 或通过 Cloudflare Pages 的环境变量注入（需改造 config.js 为动态读取）
+3. **配置 Supabase 环境变量**
+   在部署过程页面或进入项目后的 **Settings（设置） → Environment variables（环境变量）** 中，添加以下两个变量（在你的 Supabase 项目 Settings -> API 中获取）：
+   - 变量名：`SUPABASE_URL`，值：`https://xxxx.supabase.co`
+   - 变量名：`SUPABASE_ANON_KEY`，值：`eyJhbG...`
+   
+   配置完成后，去 **Deployments（部署）** 页面点击 **Retry deployment（重新部署）**。构建脚本会自动将变量注入到前端配置中，避免了把密钥直接写在 GitHub 仓库里。
 
 4. **绑定自定义域名（可选）**
    在 Cloudflare Pages 项目设置中添加自定义域名
