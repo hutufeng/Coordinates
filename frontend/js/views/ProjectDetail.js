@@ -10,6 +10,7 @@ window.ProjectDetailView = {
           <path d="M12 2v3M12 19v3M2 12h3M19 12h3"/>
         </svg>
         <span>坐标计算</span>
+        <span style="font-size:10px;background:var(--primary);color:#fff;padding:2px 6px;border-radius:10px;margin-left:6px;vertical-align:middle;">v1.0.3</span>
       </div>
       <div style="margin-left:8px;color:var(--text-muted);font-size:14px;display:flex;align-items:center;gap:4px;">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg>

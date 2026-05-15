@@ -1,4 +1,4 @@
-const CACHE_NAME = 'coord-pwa-v50';
+const CACHE_NAME = 'coord-pwa-v51';
 const STATIC_ASSETS = [
   '/',
   '/index.html',

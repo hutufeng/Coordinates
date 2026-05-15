@@ -279,7 +279,7 @@ window.StakeoutLibModule = {
         <div style="display:flex;gap:8px;flex-wrap:wrap;">
           <div style="flex:2;min-width:180px;">
             <label style="font-size:11px;color:var(--text-muted);">道路</label>
-            <select v-model="selRoad" class="form-input">
+            <select v-model="selRoad" class="form-input" @change="onRoadChange">
               <option value="">-- 请选择 --</option>
               <option v-for="r in roads" :key="r.id" :value="r.id">{{ r.name }}</option>
             </select>
@@ -678,6 +678,52 @@ window.StakeoutLibModule = {
     },
 
     // ---- 道路 ----
+    onRoadChange() {
+      const road = this.roads.find(r => r.id === this.selRoad);
+      if (!road) {
+        this.rOpt.startK = ''; this.rOpt.endK = '';
+        return;
+      }
+      // 1. 尝试从纵断面变坡点提取起止
+      const vpis = road.vertical_curves || [];
+      if (vpis.length >= 2) {
+        const ks = vpis.map(v => parseFloat(v.chainage)).filter(k => !isNaN(k));
+        this.rOpt.startK = Math.min(...ks);
+        this.rOpt.endK = Math.max(...ks);
+        return;
+      }
+      // 2. 尝试从线元法推断
+      if (road.alignment_method === 'ELEMENTS' && road.elements && road.elements.length) {
+        const sk = parseFloat(road.start_chainage) || 0;
+        const len = road.elements.reduce((sum, e) => sum + (parseFloat(e.length) || 0), 0);
+        this.rOpt.startK = sk;
+        this.rOpt.endK = sk + len;
+        return;
+      }
+      // 3. 尝试从交点法推断（交点法很难不借助计算器算总长，但可用 RoadMath 获取）
+      if (road.alignment_method === 'JD' && road.jd_points && road.jd_points.length) {
+         try {
+           if (window.RoadMath) {
+             const align = window.RoadMath.buildAlignmentFromJD(road.start_chainage || 0, road.jd_points);
+             if (align && align.length) {
+                this.rOpt.startK = parseFloat(road.start_chainage) || 0;
+                this.rOpt.endK = align[align.length-1].endK;
+                return;
+             }
+           }
+         } catch(e) { /* ignore */ }
+      }
+      // 4. 从坐标法推断
+      if (road.coord_points && road.coord_points.length >= 2) {
+        const ks = road.coord_points.map(c => parseFloat(c.chainage)).filter(k => !isNaN(k));
+        this.rOpt.startK = Math.min(...ks);
+        this.rOpt.endK = Math.max(...ks);
+        return;
+      }
+      // 回退
+      this.rOpt.startK = parseFloat(road.start_chainage) || 0;
+      this.rOpt.endK = this.rOpt.startK + 1000; // 给个默认 1000
+    },
     async calcRoad() {
       if (!this.selRoad) return window.AppStore.toast('请选择道路', 'error');
       const road = this.roads.find(r => r.id === this.selRoad);
