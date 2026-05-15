@@ -1,4 +1,4 @@
-const CACHE_NAME = 'coord-pwa-v51';
+const CACHE_NAME = 'coord-pwa-v52';
 const STATIC_ASSETS = [
   '/',
   '/index.html',
@@ -45,11 +45,8 @@ self.addEventListener('activate', event => {
 
 // 请求拦截：离线优先策略
 self.addEventListener('fetch', event => {
-  // API 请求走网络优先
+  // API 请求不经过 Service Worker 缓存机制，直接放行
   if (event.request.url.includes('supabase.co')) {
-    event.respondWith(
-      fetch(event.request).catch(() => caches.match(event.request))
-    );
     return;
   }
   // 静态资源走缓存优先
