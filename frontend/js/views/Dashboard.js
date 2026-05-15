@@ -11,7 +11,7 @@ window.DashboardView = {
           <path d="M4.93 4.93l2.12 2.12M16.95 16.95l2.12 2.12M4.93 19.07l2.12-2.12M16.95 7.05l2.12-2.12"/>
         </svg>
         <span>坐标计算</span>
-        <span style="font-size:10px;background:var(--primary);color:#fff;padding:2px 6px;border-radius:10px;margin-left:6px;vertical-align:middle;">v1.0.4</span>
+        <span style="font-size:10px;background:var(--primary);color:#fff;padding:2px 6px;border-radius:10px;margin-left:6px;vertical-align:middle;">v1.0.5</span>
       </div>
       <div class="topbar-spacer"></div>
       <!-- 用户菜单 -->

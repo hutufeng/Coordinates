@@ -346,10 +346,27 @@ window.StakeoutLibModule = {
     <!-- 预览弹窗 -->
     <div v-if="showPreview" class="modal-overlay" @click.self="closePreview" style="z-index:999;">
       <div class="modal" style="width:95vw;max-width:1200px;height:85vh;display:flex;flex-direction:column;padding:16px;">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
-          <h3 style="margin:0;font-size:16px;">👁️ 放样预览 <span style="font-size:12px;color:var(--text-muted);font-weight:normal;">(滚轮缩放，拖拽平移，蓝绿紫为基准线，红点为放样点)</span></h3>
-          <div style="display:flex;gap:8px;">
-            <button class="btn btn-ghost btn-sm" @click="resetPreview">⊙ 适应视图</button>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px;">
+          <div>
+            <h3 style="margin:0;font-size:16px;">👁️ 放样预览 <span style="font-size:12px;color:var(--text-muted);font-weight:normal;">(蓝绿紫基准，红点放样)</span></h3>
+          </div>
+          <div style="display:flex;gap:12px;align-items:center;font-size:13px;flex-wrap:wrap;">
+            <label style="display:flex;align-items:center;gap:4px;cursor:pointer;">
+              <input type="checkbox" v-model="pvOpt.showCode" @change="drawPreview"> 显示点号
+            </label>
+            <label style="display:flex;align-items:center;gap:4px;cursor:pointer;">
+              间距(抽稀):
+              <select v-model="pvOpt.step" class="form-input font-mono" style="padding:2px 4px;font-size:12px;height:24px;" @change="drawPreview">
+                <option :value="1">全部显示</option>
+                <option :value="10">隔10点</option>
+                <option :value="50">隔50点</option>
+                <option :value="200">隔200点</option>
+                <option :value="1000">隔1000点</option>
+                <option :value="0">智能限制</option>
+              </select>
+            </label>
+            <div style="width:1px;height:14px;background:var(--border);"></div>
+            <button class="btn btn-ghost btn-sm" @click="resetPreview">⊙ 适应</button>
             <button class="btn btn-icon" @click="closePreview">✖</button>
           </div>
         </div>
@@ -377,6 +394,7 @@ window.StakeoutLibModule = {
       loading: false, computing: false,
       showPreview: false, cvsW: 800, cvsH: 600,
       pv: { tx: 0, ty: 0, scale: 1, isDrag: false, lastX: 0, lastY: 0, lastDist: 0 },
+      pvOpt: { showCode: false, step: 0 },
       // 点库
       points: [], ptSearch: '', ptSelected: [], ptFmt: 'code_x_y_h',
       // 线库
@@ -900,6 +918,16 @@ window.StakeoutLibModule = {
           ctx.arc(cx, cy, radius, 0, Math.PI * 2);
         });
         if (isStroke) ctx.stroke(); else ctx.fill();
+
+        if (this.pvOpt.showCode) {
+          ctx.font = '10px sans-serif';
+          ctx.fillStyle = 'var(--text-secondary)';
+          arr.forEach(p => {
+            if (p.x == null || p.y == null || isNaN(p.x) || !p.code) return;
+            const { cx, cy } = this.toCanvas(p.x, p.y);
+            ctx.fillText(p.code, cx + radius + 2, cy - 2);
+          });
+        }
       };
       const drawLine = (arr, color, width, isPoly = false) => {
         if (!arr || arr.length < 2) return;
@@ -917,32 +945,51 @@ window.StakeoutLibModule = {
 
       if (this.activeTab === 'points') {
         const pArr = this.filteredPts;
-        const step = Math.max(1, Math.ceil(pArr.length / 5000));
+        const step = this.pvOpt.step > 0 ? this.pvOpt.step : Math.max(1, Math.ceil(pArr.length / 5000));
         const pts = [];
-        for(let i=0; i<pArr.length; i+=step) pts.push(this.applyOffset(parseFloat(pArr[i].x), parseFloat(pArr[i].y)));
+        for(let i=0; i<pArr.length; i+=step) {
+           const p = this.applyOffset(parseFloat(pArr[i].x), parseFloat(pArr[i].y));
+           p.code = pArr[i].code; pts.push(p);
+        }
         drawPts(pts, 'rgba(96, 165, 250, 0.6)', 3);
-        const selPts = this.points.filter(p => this.ptSelected.includes(p.id)).map(p=>this.applyOffset(parseFloat(p.x),parseFloat(p.y)));
+        const selPts = this.points.filter(p => this.ptSelected.includes(p.id)).map(p=>{
+           const rp = this.applyOffset(parseFloat(p.x),parseFloat(p.y));
+           rp.code = p.code; return rp;
+        });
         drawPts(selPts, '#ef4444', 4);
       } 
       else if (this.activeTab === 'lines' && this.selLine) {
         const line = this.lines.find(l => l.id === this.selLine);
         if (line && line.points) {
-          const offPts = line.points.map(p=>this.applyOffset(parseFloat(p.x),parseFloat(p.y)));
+          const offPts = line.points.map((p, i) => {
+             const rp = this.applyOffset(parseFloat(p.x),parseFloat(p.y));
+             rp.code = 'P'+(i+1); return rp;
+          });
           drawLine(offPts, '#34d399', 2);
           drawPts(offPts, '#10b981', 3);
         }
-        drawPts(this.lineResult, '#ef4444', 4);
+        const resPts = this.lineResult.map(p => {
+           const rp = {x: p.x, y: p.y};
+           if (p.chainage != null) rp.code = 'K' + this.fmtK(p.chainage);
+           return rp;
+        });
+        drawPts(resPts, '#ef4444', 4);
       }
       else if (this.activeTab === 'polys' && this.selPoly) {
         const poly = this.polys.find(p => p.id === this.selPoly);
         if (poly && poly.points) {
-          const offPts = poly.points.map(p=>this.applyOffset(parseFloat(p.x),parseFloat(p.y)));
+          const offPts = poly.points.map((p, i) => {
+             const rp = this.applyOffset(parseFloat(p.x),parseFloat(p.y));
+             rp.code = 'P'+(i+1); return rp;
+          });
           if (poly.scatter_type === 'scatter') drawPts(offPts, '#a78bfa', 2);
           else { drawLine(offPts, '#8b5cf6', 2, true); drawPts(offPts, '#a78bfa', 3); }
         }
         const resPts = this.polyMode === 'pts' ? this.polyResult : (this.isScatter ? this.gridResult : this.pgridResult);
         const stPts = [];
-        resPts.forEach(p => { if(p.x!=null&&p.y!=null) stPts.push({x:parseFloat(p.x), y:parseFloat(p.y)}); });
+        resPts.forEach(p => { 
+           if(p.x!=null&&p.y!=null) stPts.push({x:parseFloat(p.x), y:parseFloat(p.y), code: p.code}); 
+        });
         drawPts(stPts, '#ef4444', 4);
       }
       else if (this.activeTab === 'roads' && this.selRoad) {
